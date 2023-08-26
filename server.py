@@ -4,21 +4,39 @@ from _thread import *
 
 HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
 PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
+ENCODING = "utf-8"
 
 lock_thread = threading.Lock()
 
-def threaded(conn):
-   while True:
-      data = conn.recv(1024)
+def threaded(conn, addr):
+   print(f"[NEW CONNECTION] {addr} connected.")
+   conn.send("OK@Alive and kicking!".encode(ENCODING))
 
-      if not data:
+   while True:
+      data         = conn.recv(1024).decode(ENCODING)
+      splittedData = data.split("@")
+      cmd          = data[0]
+
+      ##### TREATING DATA FOR EACH COMMAND #####
+      if not data or ("EXIT" == cmd):
          print("vlwflw")
+         conn.send("DISCONNECTED@Dead and sleeping".encode(ENCODING))
          lock_thread.release()
          break
+      elif "WRITE" == cmd:
+         gluePaste = " "
+         conn.send(("OK@" + gluePaste.join(splittedData[1:])).encode(ENCODING))
+      elif "DOWNLOAD" == cmd:
+         filePath = splittedData[1]
 
-      data = data[::-1] # Reversing the received string
+         file = open(filePath, "r")
+         text = file.read()
+         file.close()
 
-      conn.send(data)
+         conn.send(("FILE@" + text).encode(ENCODING))
+      else:
+         print(data)
+         conn.send(data.encode(ENCODING))
 
    conn.close()
 
@@ -28,28 +46,15 @@ def Main():
    print("Socket binded to port", PORT)
 
    socketito.listen()
-   print("socket is listening")
+   print("Socket is listening")
 
    while True:
       conn, addr = socketito.accept()
 
       lock_thread.acquire()
-      print('Connected to :', addr[0], ':', addr[1])
 
-      start_new_thread(threaded, (conn,))
+      start_new_thread(threaded, (conn, addr))
 
    socketito.close()
 
 Main()
-
-# with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s: # IPV4 and TCP
-#    s.bind((HOST, PORT))
-#    s.listen()
-#    conn, addr = s.accept()
-#    with conn:
-#       print(f"Connected by {addr}")
-#       while True:
-#          data = conn.recv(1024)
-#          if not data:
-#                break
-#          conn.sendall(data)
