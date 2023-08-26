@@ -9,7 +9,7 @@ ENCODING = "utf-8"
 
 lock_thread = threading.Lock()
 
-def threaded(conn, addr):
+def threaded(conn, addr) -> int:
    print(f"[NEW CONNECTION] {addr} connected.")
    conn.send("OK@Alive and kicking!".encode(ENCODING))
 
@@ -18,11 +18,12 @@ def threaded(conn, addr):
       splittedData = data.split("@")
       cmd          = splittedData[0]
 
+      print("\nData received from client: ", str(data))
+
       ##### TREATING DATA FOR EACH COMMAND #####
       if not data or ("EXIT" == cmd):
          print("vlwflw")
          conn.send("DISCONNECTED@Dead and sleeping".encode(ENCODING))
-         lock_thread.release()
          break
       elif "WRITE" == cmd:
          gluePaste = " "
@@ -47,7 +48,7 @@ def threaded(conn, addr):
          conn.send(data.encode(ENCODING))
 
    conn.close()
-   return
+   return 1
 
 def Main():
    socketito = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -63,6 +64,8 @@ def Main():
       lock_thread.acquire()
 
       start_new_thread(threaded, (conn, addr))
+
+      lock_thread.release()
 
    socketito.close()
 
