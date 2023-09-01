@@ -2,11 +2,12 @@ import socket
 import hashlib
 
 HOST = "127.0.0.1"
-PORT = 23456
+PORT = 12345
 ENCODING = "utf-8"
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-   s.connect((HOST, PORT))
+   serverIp = input("Write the server ip: ")
+   s.connect((serverIp, PORT))
 
    while True:
       ###### RECEIVING DATA ######

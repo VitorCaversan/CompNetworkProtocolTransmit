@@ -52,7 +52,9 @@ def threaded(conn, addr) -> int:
 
 def Main():
    socketito = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-   socketito.bind((HOST, PORT))
+   ip = getIP()
+   print("Server ip:" + ip)
+   socketito.bind((ip, PORT))
    print("Socket binded to port", PORT)
 
    socketito.listen()
@@ -68,5 +70,18 @@ def Main():
       lock_thread.release()
 
    socketito.close()
+
+def getIP():
+   s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+   s.settimeout(0)
+   try:
+      # doesn't even have to be reachable
+      s.connect(('10.254.254.254', 1))
+      ip = s.getsockname()[0]
+   except Exception:
+      ip = '127.0.0.1'
+   finally:
+      s.close()
+   return ip
 
 Main()
