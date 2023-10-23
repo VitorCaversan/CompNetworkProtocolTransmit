@@ -2,7 +2,7 @@ import socket
 import hashlib
 
 HOST = "127.0.0.1"
-PORT = 12345
+PORT = 23456
 ENCODING = "utf-8"
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -56,10 +56,10 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
       ##### SENDING COMMAND WITH DATA #####
       if ("WRITE" == cmd) or ("EXIT" == cmd):
          gluePaste = " "
-         s.send((cmd + "@" + gluePaste.join(splittedAns[1:])).encode(ENCODING))
+         s.send((cmd + "\r\n" + gluePaste.join(splittedAns[1:])).encode(ENCODING))
       elif ("DOWNLOAD" == cmd):
          filePath = splittedAns[1]
-         s.send((cmd + "@" + filePath).encode(ENCODING))
+         s.send((cmd + "\r\n" + filePath).encode(ENCODING))
       else:
          print("No request sent. Data was: ", ans)
          break

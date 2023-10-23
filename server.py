@@ -15,7 +15,7 @@ def threaded(conn, addr) -> int:
 
    while True:
       data         = conn.recv(1024).decode(ENCODING)
-      splittedData = data.split("@")
+      splittedData = data.split("\r\n")
       cmd          = splittedData[0]
 
       print("\nData received from client: ", str(data))
