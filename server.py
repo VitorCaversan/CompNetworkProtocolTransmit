@@ -59,7 +59,6 @@ def threaded(conn, addr) -> int:
                               sha256        + "_" + text).encode(ENCODING))
       elif "GET" == cmd: # HTTP GET
          response = handleGETRequest(splittedData)
-         print(response.decode("utf-8") + "\n")
          conn.send(response)
       else:
          print(data)
@@ -108,7 +107,7 @@ def makeResponseLine(statusCode: int) -> bytes:
 
    return respLine.encode("utf-8")
 
-def makeResponseHeaders(extraHeaders:dict = None, contentSize:int = 0) -> bytes:
+def makeResponseHeaders(extraHeaders:dict = None, contentSize:int = 0, filename:str = " ") -> bytes:
    headers = headersDict.copy()
 
    if (extraHeaders != None):
@@ -116,6 +115,12 @@ def makeResponseHeaders(extraHeaders:dict = None, contentSize:int = 0) -> bytes:
 
    headersString = ""
    for key, value in headers.items():
+      if (key == "Content-Type"):
+         if (filename.endswith(".html")):
+            value = "text/html"
+         elif (filename.endswith(".jpg")):
+            value = "image/jpeg"
+
       headersString += (key + ": " + value + "\r\n")
 
    headersString += ("Content-Length: " + str(contentSize) + "\r\n")
@@ -133,7 +138,7 @@ def handleGETRequest(splittedData) -> bytes:
       file.close()
       
       respLine    = makeResponseLine(200)
-      respHeaders = makeResponseHeaders(contentSize=len(responseBody))
+      respHeaders = makeResponseHeaders(contentSize=len(responseBody), filename=filePath)
    else:
       respLine     = makeResponseLine(404)
       responseBody = b"<h1>404 Not Found</h1>"
