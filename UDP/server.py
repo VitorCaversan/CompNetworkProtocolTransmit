@@ -8,83 +8,22 @@ HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
 PORT = 34567  # Port to listen on (non-privileged ports are > 1023)
 ENCODING = "utf-8"
 
-headersDict = {
-'Server': 'Ludwig/1.0',
-'Content-Type': 'text/html'
-}
-
-statusCodesDict = {
-   200: 'OK',
-   404: 'Not Found'
-}
+responseLines = ["File Name:", "File Size:", "File Hash:", "File Content:"]
 
 lock_thread = threading.Lock()
 
-def threaded(conn, addr) -> int:
-   print(f"[NEW CONNECTION] {addr} connected.")
-   
-   while True:
-      data         = conn.recv(1024).decode(ENCODING)
-      splittedData = data.split("\r\n")
-
-      if (splittedData[0].find("GET") != -1): # If it is an HTTP request
-         cmd = "GET"
-      else:
-         cmd = splittedData[0]
-
-      print("\nData received from client: ", str(data))
-
-      ##### TREATING DATA FOR EACH COMMAND #####
-      if not data or ("EXIT" == cmd):
-         print("vlwflw")
-         conn.send("DISCONNECTED@Dead and sleeping".encode(ENCODING))
-         break
-      elif "WRITE" == cmd:
-         gluePaste = " " # Connects the words with a space
-         conn.send(("OK@" + gluePaste.join(splittedData[1:])).encode(ENCODING))
-      elif "DOWNLOAD" == cmd:
-         filePath = splittedData[1]
-
-         file = open(filePath, "r")
-         text = file.read()
-         file.close()
-
-         filePath = filePath.split("/")
-         fileName = filePath[-1]
-         textSize = len(text)
-         sha256   = hashlib.sha256(text.encode(ENCODING)).hexdigest()
-
-         conn.send(("FILE@" + fileName      + "_" +
-                              str(textSize) + "_" +
-                              sha256        + "_" + text).encode(ENCODING))
-      elif "GET" == cmd: # HTTP GET
-         response = handleGETRequest(splittedData)
-         conn.send(response)
-      else:
-         print(data)
-         conn.send(data.encode(ENCODING))
-
-   conn.close()
-   return 1
-
 def Main():
-   socketito = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+   socketito = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
    ip = getIP()
    print("Server ip:" + ip)
    socketito.bind((ip, PORT))
    print("Socket binded to port", PORT)
 
-   socketito.listen()
-   print("Socket is listening")
-
    while True:
-      conn, addr = socketito.accept()
+      msg, addr = socketito.recvfrom(1024)
 
-      lock_thread.acquire()
-
-      start_new_thread(threaded, (conn, addr))
-
-      lock_thread.release()
+      if (msg != 0):
+         treatNewMsg(msg, addr, socketito)
 
    socketito.close()
 
@@ -101,50 +40,47 @@ def getIP():
       s.close()
    return ip
 
-def makeResponseLine(statusCode: int) -> bytes:
-   sttsCodeMeaning = statusCodesDict[statusCode]
-   respLine        = ("HTTP/1.1 " + str(statusCode) + " " + sttsCodeMeaning + "\r\n")
+def treatNewMsg(msg, addr, socketi: socket) -> int:
+   print(f"[NEW MESSAGE] {addr} connected.")
 
-   return respLine.encode("utf-8")
+   msg = msg.decode(ENCODING)
+   msg = msg.split("\r\n")
+   cmd = msg[0]
 
-def makeResponseHeaders(extraHeaders:dict = None, contentSize:int = 0, filename:str = " ") -> bytes:
-   headers = headersDict.copy()
+   respLine = b""
 
-   if (extraHeaders != None):
-      headers.update(extraHeaders)
+   if "GET" == cmd:
+      filePath = msg[1]
+      respLine = handleGETRequest(filePath)
 
-   headersString = ""
-   for key, value in headers.items():
-      if (key == "Content-Type"):
-         if (filename.endswith(".html")):
-            value = "text/html"
-         elif (filename.endswith(".jpg")):
-            value = "image/jpeg"
+   socketi.sendto(respLine, addr)
 
-      headersString += (key + ": " + value + "\r\n")
+   return 1
 
-   headersString += ("Content-Length: " + str(contentSize) + "\r\n")
-
-   return headersString.encode("utf-8")
-
-def handleGETRequest(splittedData) -> bytes:
-   httpRequest = splittedData[0].split(' ')
-   method      = httpRequest[0]
-   filePath    = httpRequest[1][1:] # Removing the first '/' from the path
+def handleGETRequest(filePath: str) -> bytes:
+   respLine = b""
 
    if (os.path.exists(filePath)):
-      file         = open(filePath, "rb")
-      responseBody = file.read()
+      file     = open(filePath, "rb")
+      fileData = file.read()
       file.close()
       
-      respLine    = makeResponseLine(200)
-      respHeaders = makeResponseHeaders(contentSize=len(responseBody), filename=filePath)
+      respLine = makeResponseLine(filePath, fileData)
    else:
-      respLine     = makeResponseLine(404)
-      responseBody = b"<h1>404 Not Found</h1>"
-      respHeaders  = makeResponseHeaders(contentSize=len(responseBody))
+      respLine = makeResponseLine(b"N/A", respLine)
 
-   return (respLine + respHeaders + b"\r\n" + responseBody)
+   return (b"FILE\r\n" + respLine)
+
+def makeResponseLine(fileName: str, fileData: bytes) -> bytes:
+   textSize = len(fileData)
+   sha256   = hashlib.sha256(fileData).hexdigest()
+
+   respLine = (responseLines[0] + fileName + "\r\n" +
+               responseLines[1] + str(textSize) + "\r\n" +
+               responseLines[2] + sha256 + "\r\n" +
+               responseLines[3] + fileData.decode(ENCODING) + "\r\n").encode(ENCODING)
+
+   return respLine
 
 
 Main()
