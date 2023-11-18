@@ -1,44 +1,86 @@
 import socket
 import hashlib
+from enum import Enum
+from File import File
+
+class RxResponse(Enum):
+   NEXT_PACKET = 0
+   RESEND      = 1
+   FILE_ERROR  = 2
+   ALL_DONE    = 3
 
 HOST = "127.0.0.1"
 PORT = 34567
 ENCODING = "utf-8"
 
-responseLines = ["File Name:", "File Ack:"]
+responseLines = ["File Name:", "Ack:"]
+rxFile = File("", 0, "", 0)
 
 # Handles received file
-# Return: True if the data is integral
-#         False if not
-def handleReceivedFile(fileName, fileSize, receivedSha256, fileContent) -> bool:
-   realSha256 = hashlib.sha256(fileContent.encode(ENCODING)).hexdigest()
-   isDataIntegral = False
+# Return: Next packet, Resend, File error, All done
+def handleReceivedFile(msg) -> RxResponse:
+   rxResponse = RxResponse.RESEND
+
+   fileName       = msg[0].split(':')
+   seqNum         = msg[1].split(':')
+   fileSize       = msg[2].split(':')
+   receivedSha256 = msg[3].split(':')
+   packData       = msg[4].split(':')
+
+   # Takes away the command in the line
+   fileName       = fileName[1]
+   seqNum         = int(seqNum[1])
+   fileSize       = int(fileSize[1])
+   receivedSha256 = receivedSha256[1]
+   packData       = packData[1]
+
+   realSha256 = hashlib.sha256(packData.encode(ENCODING)).hexdigest()
 
    print("\nFile Name: "        + fileName +
-         "\nText Size: "        + fileSize +
+         "\nSequence Number: "  + str(seqNum) +
+         "\nFile Size: "        + str(fileSize) +
          "\nReceived SHA 256: " + receivedSha256 +
          "\nReal SHA 256: "     + realSha256)
    
    if (receivedSha256 == realSha256):
-      print("\nThe SHA's match!\nSaving file...")
-
-      file = open(fileName, 'w')
-      file.write(fileContent + "Look behind you.")
-      file.close()
-
-      print("\nFile saved!\n")
-      isDataIntegral = True
+      if (0 == seqNum):
+         rxFile.setFilename(fileName)
+         rxFile.setFileData(packData)
+         rxFile.setFileSize(fileSize)
+         rxFile.setAck(seqNum+len(packData))
+         rxResponse = RxResponse.NEXT_PACKET
+         if (rxFile.getAck() >= (rxFile.getFileSize()-1)):
+            rxFile.saveFile()
+            rxResponse = RxResponse.ALL_DONE
+      elif (seqNum == rxFile.getAck()):
+         rxFile.addData(packData)
+         rxFile.setAck(seqNum+len(packData))
+         rxResponse = RxResponse.NEXT_PACKET
+         if (rxFile.getAck() >= (rxFile.getFileSize()-1)):
+            rxFile.saveFile()
+            rxResponse = RxResponse.ALL_DONE
+      else:
+         rxResponse = RxResponse.RESEND
    else:
-      print("\nFile SHA's don't match.\nAborting save.\n")
+      rxResponse = RxResponse.RESEND
 
-   return isDataIntegral
+   return rxResponse
 
-def createFileError(fileName):
+def makeFileError(msg):
+   fileName = msg[0].split(':')
+   fileName = fileName[1]
    ack = ""
    response = ("FILEERROR\r\n" +
                responseLines[0] + fileName + "\r\n" +
                responseLines[1] + ack)
 
+   return response
+
+def makeNextResponse() -> str:
+   response = ("GET\r\n" +
+               responseLines[0] + rxFile.getFilename() + "\r\n" +
+               responseLines[1] + str(rxFile.getAck()) + "\r\n")
+   
    return response
 
 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -51,20 +93,20 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
       cmd         = splittedAns[0]
 
       ##### SENDING COMMAND #####
-      if ("WRITE" == cmd) or ("EXIT" == cmd):
+      if ("WRITE" == cmd):
          gluePaste = " "
          s.sendto(((cmd + "\r\n" + gluePaste.join(splittedAns[1:])).encode(ENCODING)), (serverIp, PORT))
       elif ("GET" == cmd):
          filePath = splittedAns[1]
-         s.sendto((cmd + "\r\n" + filePath).encode(ENCODING), (serverIp, PORT))
-      else:
-         print("No request sent. Data was: ", ans)
+         rxFile.setFilename(filePath)
+         response = makeNextResponse()
+         s.sendto(response.encode(ENCODING), (serverIp, PORT))
+      elif ("EXIT" == cmd):
+         print("No request sent.")
          break
 
       ###### RECEIVING DATA ######
-      print("before receive\n")
       data, addr = s.recvfrom(1024)
-      print("after receive\n")
       data = data.decode(ENCODING)
       print("\nData received from server: ", str(data))
 
@@ -78,21 +120,18 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
       elif "OK" == cmd:
          print(str(msg))
       elif "FILE" == cmd:
-         fileName       = msg[0].split(':')
-         fileSize       = msg[1].split(':')
-         receivedSha256 = msg[2].split(':')
-         fileData       = msg[3].split(':')
-
-         # Takes away the command in the line
-         fileName       = fileName[1]
-         fileSize       = fileSize[1]
-         receivedSha256 = receivedSha256[1]
-         fileData       = fileData[1]
-
-         if (True == handleReceivedFile(fileName, fileSize, receivedSha256, fileData)):
-            print("Noice\n")
+         response = handleReceivedFile(msg)
+         print("\nResponse: ", response)
+         if ((RxResponse.NEXT_PACKET == response) or (RxResponse.RESEND == response)):
+            print(rxFile)
+            response = makeNextResponse()
+            s.sendto(response.encode(ENCODING), addr)
+         elif (RxResponse.ALL_DONE == response):
+            print(rxFile)
+            rxFile.resetAll()
+            print("File received!\n")
          else:
-            response = createFileError(fileName)
+            response = makeFileError(msg)
             s.sendto(response.encode(ENCODING), addr)
       else:
          print("Command not recognized: ", cmd)

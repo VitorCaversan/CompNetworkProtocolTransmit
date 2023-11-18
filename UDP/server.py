@@ -7,8 +7,9 @@ from _thread import *
 HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
 PORT = 34567  # Port to listen on (non-privileged ports are > 1023)
 ENCODING = "utf-8"
+BUFFER_SIZE = 1024
 
-responseLines = ["File Name:", "File Size:", "File Hash:", "File Content:"]
+responseLines = ["File Name:", "SeqNum:", "File Size:", "File Hash:", "File Content:"]
 
 lock_thread = threading.Lock()
 
@@ -20,7 +21,7 @@ def Main():
    print("Socket binded to port", PORT)
 
    while True:
-      msg, addr = socketito.recvfrom(1024)
+      msg, addr = socketito.recvfrom(BUFFER_SIZE)
 
       if (msg != 0):
          treatNewMsg(msg, addr, socketito)
@@ -41,23 +42,28 @@ def getIP():
    return ip
 
 def treatNewMsg(msg, addr, socketi: socket) -> int:
-   print(f"[NEW MESSAGE] {addr} connected.")
-
    msg = msg.decode(ENCODING)
+   print(f"[NEW MESSAGE] {addr} connected. Data: ", str(msg))
    msg = msg.split("\r\n")
    cmd = msg[0]
 
    respLine = b""
 
    if "GET" == cmd:
-      filePath = msg[1]
-      respLine = handleGETRequest(filePath)
+      respLine = handleGETRequest(msg[1:])
 
    socketi.sendto(respLine, addr)
 
    return 1
 
-def handleGETRequest(filePath: str) -> bytes:
+def handleGETRequest(msg) -> bytes:
+   filePath = msg[0].split(":")
+   ack      = msg[1].split(":")
+
+   # Removes the command from the line
+   filePath = filePath[1]
+   ack      = int(ack[1])
+
    respLine = b""
 
    if (os.path.exists(filePath)):
@@ -65,20 +71,33 @@ def handleGETRequest(filePath: str) -> bytes:
       fileData = file.read()
       file.close()
       
-      respLine = makeResponseLine(filePath, fileData)
+      partialFileData = getFractionedFileData(fileData, ack)
+      respLine = makeResponseLine(filePath, len(fileData), ack, partialFileData)
    else:
-      respLine = makeResponseLine(b"N/A", respLine)
+      respLine = makeResponseLine(b"N/A", 0, 0, respLine)
 
    return (b"FILE\r\n" + respLine)
 
-def makeResponseLine(fileName: str, fileData: bytes) -> bytes:
-   textSize = len(fileData)
-   sha256   = hashlib.sha256(fileData).hexdigest()
+# Gets a portion of the file data and returns it in bytes
+def getFractionedFileData(fileData: bytes, ack: int) -> bytes:
+   package = b""
+
+   if ack < len(fileData):
+      if (ack + BUFFER_SIZE) < len(fileData):
+         package = fileData[ack:ack+BUFFER_SIZE]
+      else:
+         package = fileData[ack:len(fileData)]
+
+   return package
+
+def makeResponseLine(fileName: str, fileSize: int, ack: int, partialData: bytes) -> bytes:
+   sha256   = hashlib.sha256(partialData).hexdigest()
 
    respLine = (responseLines[0] + fileName + "\r\n" +
-               responseLines[1] + str(textSize) + "\r\n" +
-               responseLines[2] + sha256 + "\r\n" +
-               responseLines[3] + fileData.decode(ENCODING) + "\r\n").encode(ENCODING)
+               responseLines[1] + str(ack) + "\r\n" +
+               responseLines[2] + str(fileSize) + "\r\n" +
+               responseLines[3] + sha256 + "\r\n" +
+               responseLines[4] + partialData.decode(ENCODING) + "\r\n").encode(ENCODING)
 
    return respLine
 
