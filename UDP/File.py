@@ -27,6 +27,12 @@ class File:
       self.fileData = ""
       self.ack      = 0
 
+   def replaceAll(self, filename: str, fileSize: int, data: str, ack: int):
+      self.filename = filename
+      self.fileSize = fileSize
+      self.fileData = data
+      self.ack      = ack
+
    def getFilename(self):
       return self.filename
    def getFileData(self):

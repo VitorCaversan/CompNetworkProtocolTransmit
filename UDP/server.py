@@ -8,6 +8,7 @@ HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
 PORT = 34567  # Port to listen on (non-privileged ports are > 1023)
 ENCODING = "utf-8"
 BUFFER_SIZE = 1024
+DATA_BUFF_SIZE = 768
 
 responseLines = ["File Name:", "SeqNum:", "File Size:", "File Hash:", "File Content:"]
 
@@ -74,7 +75,7 @@ def handleGETRequest(msg) -> bytes:
       partialFileData = getFractionedFileData(fileData, ack)
       respLine = makeResponseLine(filePath, len(fileData), ack, partialFileData)
    else:
-      respLine = makeResponseLine(b"N/A", 0, 0, respLine)
+      respLine = makeResponseLine("N/A", 0, 0, respLine)
 
    return (b"FILE\r\n" + respLine)
 
@@ -83,10 +84,10 @@ def getFractionedFileData(fileData: bytes, ack: int) -> bytes:
    package = b""
 
    if ack < len(fileData):
-      if (ack + BUFFER_SIZE) < len(fileData):
-         package = fileData[ack:ack+BUFFER_SIZE]
+      if ((ack + DATA_BUFF_SIZE) < len(fileData)):
+         package = fileData[ack:ack+DATA_BUFF_SIZE]
       else:
-         package = fileData[ack:len(fileData)]
+         package = fileData[ack:(len(fileData))]
 
    return package
 
@@ -98,7 +99,7 @@ def makeResponseLine(fileName: str, fileSize: int, ack: int, partialData: bytes)
                responseLines[2] + str(fileSize) + "\r\n" +
                responseLines[3] + sha256 + "\r\n" +
                responseLines[4] + partialData.decode(ENCODING) + "\r\n").encode(ENCODING)
-
+   
    return respLine
 
 
