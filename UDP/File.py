@@ -16,7 +16,7 @@ class File:
    
    def saveFile(self):
       file = open(self.filename, 'w')
-      file.write(self.fileData)
+      file.write(self.fileData + "salvou")
       file.close()
    
       print("\nFile saved!\n")
